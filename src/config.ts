@@ -51,10 +51,11 @@ export const config = {
     storeFilter: list("STORE_FILTER").map((s) => s.toLowerCase()),
   },
 
-  ntfy: {
-    server: str("NTFY_SERVER", "https://ntfy.sh").replace(/\/+$/, ""),
-    topic: str("NTFY_TOPIC"),
-    token: str("NTFY_TOKEN"),
+  email: {
+    resendApiKey: str("RESEND_API_KEY"),
+    // onboarding@resend.dev works without a verified domain, but only delivers to your Resend account's email.
+    from: str("EMAIL_FROM", "CeX 3070 Notify <onboarding@resend.dev>"),
+    to: list("EMAIL_TO"),
   },
 
   schedule: {

@@ -1,7 +1,7 @@
 import * as http from "http";
 import { config } from "./config";
 import { check, describeConfig, lastResult, secondsSinceLastCheck } from "./monitor";
-import { sendPush } from "./notify";
+import { emailConfigured, sendTestEmail } from "./notify";
 
 /** Ignore /check calls that arrive within this many seconds of the last check. */
 const MIN_SECONDS_BETWEEN_CHECKS = 60;
@@ -28,14 +28,12 @@ const server = http.createServer(async (req, res) => {
     if (config.schedule.checkToken && url.searchParams.get("token") !== config.schedule.checkToken) {
       return json(res, 401, { error: "bad token" });
     }
+    if (!emailConfigured()) {
+      return json(res, 500, { ok: false, error: "RESEND_API_KEY and EMAIL_TO must be set" });
+    }
     try {
-      await sendPush({
-        title: "CeX 3070 monitor test",
-        message: `Test push from the server at ${new Date().toISOString()}`,
-        tags: ["white_check_mark"],
-        priority: 3,
-      });
-      return json(res, 200, { ok: true, server: config.ntfy.server, topicSet: !!config.ntfy.topic });
+      await sendTestEmail();
+      return json(res, 200, { ok: true, from: config.email.from, recipients: config.email.to.length });
     } catch (err) {
       return json(res, 502, { ok: false, error: (err as Error).message });
     }

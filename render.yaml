@@ -10,7 +10,11 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
-      - key: NTFY_TOPIC
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_TO
         sync: false
       - key: UPSTASH_REDIS_REST_URL
         sync: false

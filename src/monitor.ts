@@ -1,7 +1,7 @@
 import { config } from "./config";
 import { fetchProducts } from "./cex";
 import { findStockChanges } from "./diff";
-import { notifyChanges, sendPush } from "./notify";
+import { emailConfigured, notifyChanges, sendStartupNotice } from "./notify";
 import { createStateStore } from "./state";
 import { Snapshot } from "./types";
 
@@ -45,18 +45,15 @@ async function runCheck(): Promise<CheckResult> {
     if (!previous) {
       await store.save(snapshot);
       console.log(`[${at}] Baseline saved: ${products.length} models, ${inStock} in stock`);
-      await sendPush({
-        title: "CeX 3070 monitor started",
-        message: `Watching ${products.length} RTX 3070 models (${inStock} currently in stock). You'll get a push when stock appears.`,
-        tags: ["eyes"],
-        priority: 2,
-      }).catch((err) => console.error("Startup push failed:", err.message));
+      await sendStartupNotice(products.length, inStock).catch((err) =>
+        console.error("Startup email failed:", err.message),
+      );
       return { ok: true, at, products: products.length, inStock, changes: 0, baseline: true };
     }
 
     const changes = findStockChanges(previous, products);
     if (changes.length > 0) {
-      // Notify before saving, so a failed push is retried on the next check.
+      // Notify before saving, so a failed email is retried on the next check.
       await notifyChanges(changes);
     }
     await store.save(snapshot);
@@ -97,6 +94,6 @@ export function describeConfig(): string {
     `online=${w.online}`,
     `stores=${w.stores}${w.storeFilter.length ? ` (${w.storeFilter.join(", ")})` : ""}`,
     `state=${store.kind}`,
-    `ntfy=${config.ntfy.topic ? `${config.ntfy.server}/<topic>` : "DISABLED"}`,
+    `email=${emailConfigured() ? `${config.email.to.length} recipient(s) from ${config.email.from}` : "DISABLED"}`,
   ].join(" ");
 }
