@@ -5,6 +5,8 @@ export interface Product {
   price: number;
   onlineQty: number;
   stores: string[];
+  /** Product photo URL (CeX static CDN), if CeX has one. */
+  image?: string;
 }
 
 export interface Snapshot {

@@ -12,7 +12,9 @@ Every few minutes it asks CeX's site search (the Algolia proxy at `search.webuy.
 
 CeX has one page per *model*, not per physical card, so "a new listing" means stock rising on a model page. If one card sells and another arrives between two checks, the count doesn't change and that one is missed.
 
-Each check that finds changes sends **one email** listing every affected model, cheapest first: price, name (linked to the CeX page), what changed, and which stores. The first check just saves a baseline and sends a single "monitor started" email. If sending fails, the previous state is kept, so the alert is retried on the next check.
+Each check that finds changes sends **one email** with a card per affected model, cheapest first: product photo, price, badges (NEW MODEL / ONLINE / IN STORE), what changed, which stores, and a "View on CeX" button. The first check saves a baseline and sends a "monitor started" email with the **full watchlist**: every model, its price and current stock. The same list is live at `/watchlist`.
+
+A brand-new model with stock is alerted like a restock, with a NEW MODEL badge. A new model with no stock yet is recorded silently, and alerts normally once stock arrives. If sending fails, the previous state is kept, so the alert is retried on the next check.
 
 > The old `wss2.cex.uk.webuy.io/v3/boxes` API (from Dionakra/webuy-api) is now blocked by Cloudflare, which is why this uses the search proxy instead. ntfy.sh was tried for push alerts but timed out from Render's shared IPs.
 
@@ -28,7 +30,8 @@ You need a Resend API key (resend.com → API Keys). The sender address must be 
 cp .env.example .env     # set RESEND_API_KEY and EMAIL_TO
 npm install
 npm run build
-npm run test:notify      # sends a test email
+npm run test:notify      # sample stock-alert email using live data
+npm run test:notify -- startup   # the "monitor started" email with the full watchlist
 npm run check            # one real check (first run = baseline)
 npm start                # server + checks every 5 minutes
 ```
@@ -55,7 +58,8 @@ https://<your-service>.onrender.com/check?token=<CHECK_TOKEN>
 |---|---|
 | `/status` | Health check and the last check's result |
 | `/check?token=…` | Run a check now (ignored if one ran in the last 60 s) |
-| `/test-notify?token=…` | Send a test email from the server and return any error |
+| `/watchlist` | Every watched model with price, photo and current stock |
+| `/test-notify?token=…` | Send a sample alert email (live data) and return any error |
 
 ## Settings
 

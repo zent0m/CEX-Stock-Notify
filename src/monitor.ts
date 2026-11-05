@@ -3,7 +3,7 @@ import { fetchProducts } from "./cex";
 import { findStockChanges } from "./diff";
 import { emailConfigured, notifyChanges, sendStartupNotice } from "./notify";
 import { createStateStore } from "./state";
-import { Snapshot } from "./types";
+import { Product, Snapshot } from "./types";
 
 export interface CheckResult {
   ok: boolean;
@@ -18,6 +18,9 @@ export interface CheckResult {
 const store = createStateStore();
 let running: Promise<CheckResult> | null = null;
 export let lastResult: CheckResult | null = null;
+/** Products from the last successful check, for the /watchlist page. */
+export let latestProducts: Product[] = [];
+export let latestProductsAt: string | null = null;
 
 export function stateStoreKind(): string {
   return store.kind;
@@ -45,7 +48,9 @@ async function runCheck(): Promise<CheckResult> {
     if (!previous) {
       await store.save(snapshot);
       console.log(`[${at}] Baseline saved: ${products.length} models, ${inStock} in stock`);
-      await sendStartupNotice(products.length, inStock).catch((err) =>
+      latestProducts = products;
+      latestProductsAt = at;
+      await sendStartupNotice(products).catch((err) =>
         console.error("Startup email failed:", err.message),
       );
       return { ok: true, at, products: products.length, inStock, changes: 0, baseline: true };
@@ -57,6 +62,8 @@ async function runCheck(): Promise<CheckResult> {
       await notifyChanges(changes);
     }
     await store.save(snapshot);
+    latestProducts = products;
+    latestProductsAt = at;
 
     console.log(`[${at}] ${products.length} models, ${inStock} in stock, ${changes.length} changes`);
     for (const c of changes) {

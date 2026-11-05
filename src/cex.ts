@@ -9,6 +9,7 @@ interface AlgoliaHit {
   stores?: string[] | null;
   boxDeleted?: number;
   showOnWeb?: number;
+  imageUrls?: { large?: string | null; medium?: string | null; small?: string | null } | null;
 }
 
 let appId = config.cex.algoliaAppId;
@@ -33,7 +34,7 @@ async function search(): Promise<Response> {
       query: config.watch.query,
       filters: `categoryId:${config.cex.graphicsCardCategoryId}`,
       hitsPerPage: 1000,
-      attributesToRetrieve: ["boxId", "boxName", "sellPrice", "ecomQuantity", "stores", "boxDeleted", "showOnWeb"],
+      attributesToRetrieve: ["boxId", "boxName", "sellPrice", "ecomQuantity", "stores", "boxDeleted", "showOnWeb", "imageUrls"],
       attributesToHighlight: [],
     }),
     signal: AbortSignal.timeout(20_000),
@@ -86,11 +87,16 @@ export async function fetchProducts(): Promise<Product[]> {
   const json: any = await res.json();
   const hits: AlgoliaHit[] = Array.isArray(json?.hits) ? json.hits : [];
 
-  return hits.filter(matches).map((h) => ({
-    boxId: h.boxId,
-    name: h.boxName.replace(/\s+/g, " ").trim(),
-    price: h.sellPrice,
-    onlineQty: h.ecomQuantity ?? 0,
-    stores: [...new Set(h.stores ?? [])].sort(),
-  }));
+  return hits.filter(matches).map((h) => {
+    const img = h.imageUrls?.medium || h.imageUrls?.large || h.imageUrls?.small;
+    return {
+      boxId: h.boxId,
+      name: h.boxName.replace(/\s+/g, " ").trim(),
+      price: h.sellPrice,
+      onlineQty: h.ecomQuantity ?? 0,
+      stores: [...new Set(h.stores ?? [])].sort(),
+      // CeX image paths contain spaces ("Graphics Cards - PCI-E"), which email clients choke on.
+      image: img ? encodeURI(img) : undefined,
+    };
+  });
 }

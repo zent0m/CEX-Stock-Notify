@@ -1,7 +1,9 @@
 import * as http from "http";
 import { config } from "./config";
-import { check, describeConfig, lastResult, secondsSinceLastCheck } from "./monitor";
+import { fetchProducts } from "./cex";
+import { check, describeConfig, lastResult, latestProducts, latestProductsAt, secondsSinceLastCheck } from "./monitor";
 import { emailConfigured, sendTestEmail } from "./notify";
+import { watchlistPage } from "./templates";
 
 /** Ignore /check calls that arrive within this many seconds of the last check. */
 const MIN_SECONDS_BETWEEN_CHECKS = 60;
@@ -32,11 +34,18 @@ const server = http.createServer(async (req, res) => {
       return json(res, 500, { ok: false, error: "RESEND_API_KEY and EMAIL_TO must be set" });
     }
     try {
-      await sendTestEmail();
+      await sendTestEmail(latestProducts.length ? latestProducts : await fetchProducts());
       return json(res, 200, { ok: true, from: config.email.from, recipients: config.email.to.length });
     } catch (err) {
       return json(res, 502, { ok: false, error: (err as Error).message });
     }
+  }
+
+  if (url.pathname === "/watchlist") {
+    // Just woken up (e.g. Render free tier)? Wait for the first check so the page isn't empty.
+    if (!latestProducts.length) await check();
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    return res.end(watchlistPage(latestProducts, latestProductsAt));
   }
 
   if (url.pathname === "/" || url.pathname === "/status") {

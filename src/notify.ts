@@ -1,5 +1,6 @@
 import { config } from "./config";
-import { StockChange } from "./types";
+import { changesEmail, startupEmail } from "./templates";
+import { Product, StockChange } from "./types";
 
 export interface Email {
   subject: string;
@@ -10,10 +11,6 @@ export interface Email {
 const RETRY_DELAYS_MS = [5_000, 15_000];
 
 class RetryableError extends Error {}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
 
 async function sendOnce(email: Email): Promise<void> {
   let res: Response;
@@ -61,64 +58,35 @@ export async function sendEmail(email: Email): Promise<void> {
   }
 }
 
-function changeLines(change: StockChange): string[] {
-  const lines: string[] = [];
-  if (change.onlineAfter > change.onlineBefore) {
-    lines.push(`Online stock: ${change.onlineBefore} → ${change.onlineAfter}`);
-  }
-  if (change.newStores.length > 0) {
-    lines.push(`Now in store: ${change.newStores.join(", ")}`);
-  }
-  if (change.isNewModel) lines.push("New model — not seen before");
-  return lines;
-}
-
-const FOOTER = `<p style="color:#888;font-size:12px;margin-top:24px">Automated alert from CeX 3070 Notify.</p>`;
-
 /** One email per check, listing every model that gained stock (cheapest first). */
 export async function notifyChanges(changes: StockChange[]): Promise<void> {
   if (changes.length === 0) return;
-
-  const first = changes[0].product;
-  const more = changes.length > 1 ? ` (+${changes.length - 1} more)` : "";
-  const subject = `RTX 3070 in stock: £${first.price} ${first.name}${more}`;
-
-  const items = changes
-    .map((c) => {
-      const p = c.product;
-      const details = changeLines(c)
-        .map((l) => `<div style="color:#444">${escapeHtml(l)}</div>`)
-        .join("");
-      return `
-        <div style="margin:0 0 18px">
-          <div style="font-size:16px"><strong>£${p.price}</strong> — <a href="${escapeHtml(config.cex.productUrl(p.boxId))}">${escapeHtml(p.name)}</a></div>
-          ${details}
-        </div>`;
-    })
-    .join("");
-
-  await sendEmail({
-    subject,
-    html: `
-      <h2 style="margin:0 0 16px">${changes.length} RTX 3070 stock change${changes.length > 1 ? "s" : ""} on CeX</h2>
-      ${items}
-      ${FOOTER}`,
-  });
+  await sendEmail(changesEmail(changes));
 }
 
-export async function sendStartupNotice(models: number, inStock: number): Promise<void> {
-  await sendEmail({
-    subject: "CeX 3070 monitor started",
-    html: `<p>Watching <strong>${models}</strong> RTX 3070 models (${inStock} currently in stock).</p>
-           <p>You'll get an email whenever stock appears online or in a store.</p>${FOOTER}`,
-  });
+/** Sent after a fresh baseline: includes the full watchlist with prices and stock. */
+export async function sendStartupNotice(products: Product[]): Promise<void> {
+  await sendEmail(startupEmail(products));
 }
 
-export async function sendTestEmail(): Promise<void> {
-  await sendEmail({
-    subject: "CeX 3070 monitor test",
-    html: `<p>Test email sent at ${new Date().toISOString()}.</p>
-           <p>Example: <strong>£320</strong> — <a href="${config.cex.productUrl("SGRAGIA30708G01")}">Gigabyte GeForce RTX 3070 Gaming OC 8GB GDDR6</a><br>
-           Online stock: 0 → 1<br>Now in store: Birmingham</p>${FOOTER}`,
-  });
+/**
+ * A realistic preview: pretends the cheapest in-stock models (plus one as a "new model")
+ * just came into stock, using live data, and marks the subject as a test.
+ */
+export async function sendTestEmail(products: Product[]): Promise<void> {
+  const sample = [...products]
+    .filter((p) => p.onlineQty > 0 || p.stores.length > 0)
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 3);
+  if (sample.length === 0) throw new Error("No in-stock products to build a sample from");
+
+  const changes: StockChange[] = sample.map((p, i) => ({
+    product: p,
+    isNewModel: i === sample.length - 1,
+    onlineBefore: 0,
+    onlineAfter: p.onlineQty,
+    newStores: p.stores,
+  }));
+  const email = changesEmail(changes);
+  await sendEmail({ subject: `[TEST] ${email.subject}`, html: email.html });
 }
