@@ -24,7 +24,10 @@ const C = {
   outText: "#9ca3af",
 };
 
-const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+/** WATCH_LABEL, e.g. "RTX 3070". */
+const L = () => config.watch.label;
+
+const FONT ="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
 export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -65,7 +68,7 @@ function layout(opts: { preheader: string; heading: string; sub: string; body: s
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.bg}"><tr><td align="center" style="padding:24px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
   <tr><td style="background:${C.header};border-radius:12px 12px 0 0;padding:20px 24px">
-    <div style="color:#9ca3af;font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:600">CeX 3070 Watch</div>
+    <div style="color:#9ca3af;font-size:12px;letter-spacing:.08em;text-transform:uppercase;font-weight:600">CeX ${esc(L())} Watch</div>
     <div style="color:#ffffff;font-size:22px;font-weight:700;margin-top:4px">${esc(opts.heading)}</div>
     <div style="color:#d1d5db;font-size:14px;margin-top:4px">${esc(opts.sub)}</div>
   </td></tr>
@@ -162,7 +165,8 @@ function sectionTitle(text: string): string {
  * Every watched model, cheapest first: in-stock ones with photos, out-of-stock ones as a
  * compact list (keeps the email under Gmail's ~102 KB clipping limit).
  */
-export function watchlistTable(products: Product[]): string {
+export function watchlistTable(products: Product[], opts: { includeOutOfStock?: boolean } = {}): string {
+  const includeOut = opts.includeOutOfStock ?? true;
   const byPrice = (a: Product, b: Product) => a.price - b.price || a.name.localeCompare(b.name);
   const stocked = products.filter(inStock).sort(byPrice);
   const out = products.filter((p) => !inStock(p)).sort(byPrice);
@@ -188,8 +192,26 @@ export function watchlistTable(products: Product[]): string {
   const table = (rows: string) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>`;
   return [
     stocked.length ? sectionTitle(`In stock now (${stocked.length})`) + table(stockedRows) : "",
-    out.length ? sectionTitle(`Out of stock (${out.length})`) + table(outRows) : "",
+    !out.length
+      ? ""
+      : includeOut
+        ? sectionTitle(`Out of stock (${out.length})`) + table(outRows)
+        : sectionTitle(`Out of stock (${out.length})`) +
+          `<p style="font-size:13px;color:${C.muted};margin:6px 0">Left out to keep this email small.${
+            config.publicUrl
+              ? ` <a href="${esc(config.publicUrl)}/watchlist" style="color:${C.link}">See the full list →</a>`
+              : " Open /watchlist on the app to see them."
+          }</p>`,
   ].join("");
+}
+
+/** Gmail clips emails over ~102 KB; stay comfortably under it. */
+const EMAIL_BUDGET_BYTES = 95_000;
+
+/** Build an email with the full watchlist, falling back to in-stock only if it would be too big. */
+function withWatchlist(build: (list: string) => string, products: Product[]): string {
+  const full = build(watchlistTable(products));
+  return Buffer.byteLength(full) <= EMAIL_BUDGET_BYTES ? full : build(watchlistTable(products, { includeOutOfStock: false }));
 }
 
 function stats(products: Product[]): string {
@@ -209,7 +231,7 @@ function stats(products: Product[]): string {
 function filtersLine(): string {
   const w = config.watch;
   const parts = [
-    w.includeTi ? "3070 + 3070 Ti" : "3070 only (no Ti)",
+    w.includeTi ? `${L()} incl. Ti` : `${L()} (no Ti)`,
     w.maxPrice !== null ? `up to ${gbp(w.maxPrice)}` : "any price",
     [w.online ? "online" : "", w.stores ? "in-store" : ""].filter(Boolean).join(" + ") + " stock",
   ];
@@ -236,13 +258,13 @@ export function changesEmail(changes: StockChange[]): { subject: string; html: s
 
   const heading = restocks.length
     ? restocks.length === 1
-      ? "RTX 3070 back in stock"
-      : `${restocks.length} RTX 3070s back in stock`
+      ? `${L()} back in stock`
+      : `${restocks.length} ${L()} cards back in stock`
     : soldOut.length && !reduced.length
       ? soldOut.length === 1
-        ? "An RTX 3070 sold out"
-        : `${soldOut.length} RTX 3070s sold out`
-      : "RTX 3070 stock update";
+        ? `${L()} sold out`
+        : `${soldOut.length} ${L()} cards sold out`
+      : `${L()} stock update`;
 
   const summary = [
     restocks.length ? `${restocks.length} in stock` : "",
@@ -306,29 +328,37 @@ export function dailyEmail(d: DailyInfo): { subject: string; html: string } {
 
   return {
     subject: healthy
-      ? `Still running: ${stocked} of ${d.products.length} RTX 3070s in stock`
-      : `⚠ CeX 3070 monitor: last check failed`,
-    html: layout({
-      preheader: healthy ? `All good. ${stocked} models in stock right now.` : `Last check failed: ${d.lastCheckError ?? "unknown error"}`,
-      heading: "Daily check-in",
-      sub: `${filtersLine()} · ${londonNow()}`,
-      body: `${statusBox}${activity}${d.products.length ? sectionTitle("Right now") + stats(d.products) + watchlistTable(d.products) : ""}`,
-    }),
+      ? `Still running: ${stocked} of ${d.products.length} ${L()} cards in stock`
+      : `⚠ CeX ${L()} monitor: last check failed`,
+    html: withWatchlist(
+      (list) =>
+        layout({
+          preheader: healthy ? `All good. ${stocked} models in stock right now.` : `Last check failed: ${d.lastCheckError ?? "unknown error"}`,
+          heading: "Daily check-in",
+          sub: `${filtersLine()} · ${londonNow()}`,
+          body: `${statusBox}${activity}${d.products.length ? sectionTitle("Right now") + stats(d.products) + list : ""}`,
+        }),
+      d.products,
+    ),
   };
 }
 
 export function startupEmail(products: Product[]): { subject: string; html: string } {
   const stocked = products.filter(inStock).length;
   return {
-    subject: `CeX 3070 monitor started: ${plural(products.length, "model")}, ${stocked} in stock`,
-    html: layout({
-      preheader: `Watching ${products.length} models, ${stocked} in stock right now.`,
-      heading: "Monitor started",
-      sub: filtersLine(),
-      body: `${stats(products)}
-        <p style="font-size:14px;color:${C.muted};margin:12px 0 4px">You'll get an email whenever any of these comes into stock online or in a store, or a new 3070 model appears${config.watch.alertOnDecrease ? ", and when stock goes down or sells out" : ""}.${config.daily.hour !== null ? ` There's also a daily check-in at ${String(config.daily.hour).padStart(2, "0")}:00.` : ""} Here's everything being watched right now:</p>
-        ${watchlistTable(products)}`,
-    }),
+    subject: `CeX ${L()} monitor started: ${plural(products.length, "model")}, ${stocked} in stock`,
+    html: withWatchlist(
+      (list) =>
+        layout({
+          preheader: `Watching ${products.length} models, ${stocked} in stock right now.`,
+          heading: "Monitor started",
+          sub: filtersLine(),
+          body: `${stats(products)}
+        <p style="font-size:14px;color:${C.muted};margin:12px 0 4px">You'll get an email whenever any of these comes into stock online or in a store, or a new ${esc(L())} model appears${config.watch.alertOnDecrease ? ", and when stock goes down or sells out" : ""}.${config.daily.hour !== null ? ` There's also a daily check-in at ${String(config.daily.hour).padStart(2, "0")}:00.` : ""} Here's everything being watched right now:</p>
+        ${list}`,
+        }),
+      products,
+    ),
   };
 }
 

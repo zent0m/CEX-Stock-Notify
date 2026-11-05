@@ -68,12 +68,13 @@ function matches(hit: AlgoliaHit): boolean {
   if (!hit.boxId || !hit.boxName) return false;
   if (hit.boxDeleted === 1 || hit.showOnWeb === 0) return false;
   if (!namePattern.test(hit.boxName)) return false;
-  if (!includeTi && /\b3070\s*ti\b/i.test(hit.boxName)) return false;
+  // Any "xx70 Ti" / "3080Ti" etc., not just the 3070 Ti, so other NAME_PATTERNs work too.
+  if (!includeTi && /\b\d{4}\s*ti\b/i.test(hit.boxName)) return false;
   if (maxPrice !== null && hit.sellPrice > maxPrice) return false;
   return true;
 }
 
-/** Fetch every matching RTX 3070 product with its current stock. Throws on failure. */
+/** Fetch every graphics card matching the watch settings, with current stock. Throws on failure. */
 export async function fetchProducts(): Promise<Product[]> {
   let res = await search();
   if ((res.status === 401 || res.status === 403) && (await refreshKeys())) {
@@ -86,6 +87,12 @@ export async function fetchProducts(): Promise<Product[]> {
 
   const json: any = await res.json();
   const hits: AlgoliaHit[] = Array.isArray(json?.hits) ? json.hits : [];
+  if (typeof json?.nbHits === "number" && json.nbHits > hits.length) {
+    console.warn(
+      `CeX search "${config.watch.query}" matched ${json.nbHits} cards but only ${hits.length} were returned ` +
+        `(1000 max per request) — some cards may be missed. Use a narrower SEARCH_QUERY.`,
+    );
+  }
 
   return hits.filter(matches).map((h) => {
     const img = h.imageUrls?.medium || h.imageUrls?.large || h.imageUrls?.small;

@@ -30,6 +30,8 @@ function list(key: string): string[] {
 
 export const config = {
   port: Number(str("PORT", "3000")),
+  /** Public URL of this app (Render sets RENDER_EXTERNAL_URL automatically). Used for links in emails. */
+  publicUrl: str("PUBLIC_URL", str("RENDER_EXTERNAL_URL")).replace(/\/+$/, ""),
 
   cex: {
     searchUrl: "https://search.webuy.io/1/indexes/prod_cex_uk/query",
@@ -44,6 +46,8 @@ export const config = {
   watch: {
     query: str("SEARCH_QUERY", "rtx 3070"),
     namePattern: new RegExp(str("NAME_PATTERN", "\\b3070\\b"), "i"),
+    /** What the emails call the cards being watched, e.g. "RTX 3070" or "RTX 3070/3080". */
+    label: str("WATCH_LABEL", "RTX 3070"),
     includeTi: bool("INCLUDE_TI", true),
     maxPrice: num("MAX_PRICE"),
     online: bool("WATCH_ONLINE", true),

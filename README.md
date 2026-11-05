@@ -75,7 +75,10 @@ See `.env.example`.
 | `RESEND_API_KEY` | — | Resend API key (required) |
 | `EMAIL_TO` | — | Comma-separated recipients (required) |
 | `EMAIL_FROM` | `onboarding@resend.dev` | Sender; must be on a Resend-verified domain |
-| `INCLUDE_TI` | `true` | Include 3070 Ti cards |
+| `NAME_PATTERN` | `\b3070\b` | Regex a card's name must match; this is what picks the cards. For 3070s and 3080s: `\b(3070\|3080)\b` |
+| `SEARCH_QUERY` | `rtx 3070` | CeX search text. It's loose and already returns 3080s too, so it rarely needs changing |
+| `INCLUDE_TI` | `true` | Include Ti cards (any model) |
+| `WATCH_LABEL` | `RTX 3070` | What the emails call the cards, e.g. `RTX 3070/3080` |
 | `MAX_PRICE` | none | Only watch models at or under this price (£) |
 | `DISCOUNT_PERCENT` | `15` | Show each price as "£320 → £272" with this % off; `0` hides it |
 | `ALERT_ON_DECREASE` | `true` | Also email on stock drops and sell-outs |
