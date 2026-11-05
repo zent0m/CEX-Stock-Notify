@@ -1,5 +1,5 @@
 import { config } from "./config";
-import { changesEmail, startupEmail } from "./templates";
+import { changesEmail, dailyEmail, DailyInfo, startupEmail } from "./templates";
 import { Product, StockChange } from "./types";
 
 export interface Email {
@@ -58,7 +58,7 @@ export async function sendEmail(email: Email): Promise<void> {
   }
 }
 
-/** One email per check, listing every model that gained stock (cheapest first). */
+/** One email per check, listing every stock change (restocks first, cheapest first). */
 export async function notifyChanges(changes: StockChange[]): Promise<void> {
   if (changes.length === 0) return;
   await sendEmail(changesEmail(changes));
@@ -69,24 +69,46 @@ export async function sendStartupNotice(products: Product[]): Promise<void> {
   await sendEmail(startupEmail(products));
 }
 
-/**
- * A realistic preview: pretends the cheapest in-stock models (plus one as a "new model")
- * just came into stock, using live data, and marks the subject as a test.
- */
-export async function sendTestEmail(products: Product[]): Promise<void> {
-  const sample = [...products]
-    .filter((p) => p.onlineQty > 0 || p.stores.length > 0)
-    .sort((a, b) => a.price - b.price)
-    .slice(0, 3);
-  if (sample.length === 0) throw new Error("No in-stock products to build a sample from");
+export async function sendDailyEmail(info: DailyInfo): Promise<void> {
+  await sendEmail(dailyEmail(info));
+}
 
-  const changes: StockChange[] = sample.map((p, i) => ({
+/**
+ * A realistic preview using live data: two restocks (one flagged as a new model),
+ * one model "sold out" and one with stock going down. Subject is marked as a test.
+ */
+export function sampleChanges(products: Product[]): StockChange[] {
+  const stocked = [...products].filter((p) => p.onlineQty > 0 || p.stores.length > 0).sort((a, b) => a.price - b.price);
+  if (stocked.length === 0) throw new Error("No in-stock products to build a sample from");
+  const base = { onlineBefore: 0, onlineAfter: 0, newStores: [] as string[], goneStores: [] as string[], isNewModel: false };
+
+  const changes: StockChange[] = stocked.slice(0, 2).map((p, i) => ({
+    ...base,
+    kind: "restock",
     product: p,
-    isNewModel: i === sample.length - 1,
-    onlineBefore: 0,
+    isNewModel: i === 1,
     onlineAfter: p.onlineQty,
     newStores: p.stores,
   }));
-  const email = changesEmail(changes);
+  const sold = stocked[2];
+  if (sold) {
+    changes.push({ ...base, kind: "soldout", product: { ...sold, onlineQty: 0, stores: [] }, onlineBefore: sold.onlineQty, goneStores: sold.stores });
+  }
+  const down = stocked.find((p) => p.onlineQty > 1 && p.stores.length > 1);
+  if (down) {
+    changes.push({
+      ...base,
+      kind: "reduced",
+      product: { ...down, onlineQty: down.onlineQty - 1, stores: down.stores.slice(1) },
+      onlineBefore: down.onlineQty,
+      onlineAfter: down.onlineQty - 1,
+      goneStores: down.stores.slice(0, 1),
+    });
+  }
+  return changes;
+}
+
+export async function sendTestEmail(products: Product[]): Promise<void> {
+  const email = changesEmail(sampleChanges(products));
   await sendEmail({ subject: `[TEST] ${email.subject}`, html: email.html });
 }

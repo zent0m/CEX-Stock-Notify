@@ -3,7 +3,7 @@
  * Emails use tables + inline styles because email clients (Gmail, Outlook) ignore most CSS.
  */
 import { config } from "./config";
-import { Product, StockChange } from "./types";
+import { DailyStats, Product, StockChange } from "./types";
 
 const C = {
   bg: "#f3f4f6",
@@ -16,6 +16,10 @@ const C = {
   accentBg: "#dcfce7",
   newBg: "#ede9fe",
   newText: "#6d28d9",
+  downBg: "#fef3c7",
+  downText: "#b45309",
+  soldBg: "#fee2e2",
+  soldText: "#b91c1c",
   link: "#1d4ed8",
   outText: "#9ca3af",
 };
@@ -85,6 +89,45 @@ function storeList(stores: string[], max = 12): string {
   return stores.length > max ? `${shown} <span style="color:${C.muted}">+${stores.length - max} more</span>` : shown;
 }
 
+function changeLines(c: StockChange): string[] {
+  const lines: string[] = [];
+  if (c.onlineAfter !== c.onlineBefore && config.watch.online) {
+    lines.push(`Online stock <strong>${c.onlineBefore} → ${c.onlineAfter}</strong>`);
+  }
+  if (c.newStores.length > 0) {
+    lines.push(`Now in ${plural(c.newStores.length, "store")}: ${storeList(c.newStores)}`);
+  }
+  if (c.goneStores.length > 0) {
+    lines.push(`No longer in: ${storeList(c.goneStores)}`);
+  }
+  if (c.kind !== "soldout" && c.kind !== "restock") {
+    const left = [c.product.onlineQty > 0 ? `${c.product.onlineQty} online` : "", c.product.stores.length ? plural(c.product.stores.length, "store") : ""]
+      .filter(Boolean)
+      .join(" · ");
+    if (left) lines.push(`Still available: ${left}`);
+  }
+  return lines;
+}
+
+/** Smaller, muted card for stock going down or selling out. */
+function downCard(c: StockChange): string {
+  const p = c.product;
+  const url = config.cex.productUrl(p.boxId);
+  const b = c.kind === "soldout" ? badge("SOLD OUT", C.soldBg, C.soldText) : badge("STOCK DOWN", C.downBg, C.downText);
+  return `
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${C.border};margin-top:8px">
+    <tr>
+      <td width="70" valign="top" style="padding:12px 14px 4px 0;${c.kind === "soldout" ? "opacity:.6" : ""}"><a href="${esc(url)}">${image(p, 56)}</a></td>
+      <td valign="top" style="padding:12px 0 4px">
+        <div>${b}</div>
+        <a href="${esc(url)}" style="color:${C.text};font-size:15px;font-weight:600;text-decoration:none;line-height:20px">${esc(p.name)}</a>
+        <div style="font-size:16px;font-weight:700;margin:2px 0">${priceWithDiscount(p.price)}</div>
+        ${changeLines(c).map((l) => `<div style="font-size:13px;color:${C.muted};line-height:19px">${l}</div>`).join("")}
+      </td>
+    </tr>
+  </table>`;
+}
+
 function changeCard(c: StockChange): string {
   const p = c.product;
   const url = config.cex.productUrl(p.boxId);
@@ -94,13 +137,7 @@ function changeCard(c: StockChange): string {
     c.newStores.length > 0 ? badge("IN STORE", C.accentBg, C.accent) : "",
   ].join("");
 
-  const lines: string[] = [];
-  if (c.onlineAfter > c.onlineBefore) {
-    lines.push(`Online stock <strong>${c.onlineBefore} → ${c.onlineAfter}</strong>`);
-  }
-  if (c.newStores.length > 0) {
-    lines.push(`Now in ${plural(c.newStores.length, "store")}: ${storeList(c.newStores)}`);
-  }
+  const lines = changeLines(c);
 
   return `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid ${C.border};margin-top:12px">
@@ -182,20 +219,100 @@ function filtersLine(): string {
 
 // ---------- Public builders ----------
 
+const londonNow = () =>
+  new Date().toLocaleString("en-GB", { timeZone: "Europe/London", dateStyle: "medium", timeStyle: "short" });
+
+/** One email per check: restocks as big cards, then sell-outs and reductions as smaller ones. */
 export function changesEmail(changes: StockChange[]): { subject: string; html: string } {
-  const first = changes[0].product;
+  const restocks = changes.filter((c) => c.kind === "restock");
+  const soldOut = changes.filter((c) => c.kind === "soldout");
+  const reduced = changes.filter((c) => c.kind === "reduced");
+  const newModels = restocks.filter((c) => c.isNewModel).length;
+
+  // Lead with the most interesting change: a restock if there is one.
+  const lead = restocks[0] ?? soldOut[0] ?? reduced[0];
+  const tag = lead.kind === "restock" ? (lead.isNewModel ? "New model" : "In stock") : lead.kind === "soldout" ? "Sold out" : "Stock down";
   const more = changes.length > 1 ? ` (+${changes.length - 1} more)` : "";
-  const newModels = changes.filter((c) => c.isNewModel).length;
-  const tag = changes[0].isNewModel ? "New model" : "In stock";
+
+  const heading = restocks.length
+    ? restocks.length === 1
+      ? "RTX 3070 back in stock"
+      : `${restocks.length} RTX 3070s back in stock`
+    : soldOut.length && !reduced.length
+      ? soldOut.length === 1
+        ? "An RTX 3070 sold out"
+        : `${soldOut.length} RTX 3070s sold out`
+      : "RTX 3070 stock update";
+
+  const summary = [
+    restocks.length ? `${restocks.length} in stock` : "",
+    newModels ? plural(newModels, "new model") : "",
+    soldOut.length ? `${soldOut.length} sold out` : "",
+    reduced.length ? `${reduced.length} stock down` : "",
+  ].filter(Boolean);
+
+  const body = [
+    restocks.map(changeCard).join(""),
+    soldOut.length ? sectionTitle(`Sold out (${soldOut.length})`) + soldOut.map(downCard).join("") : "",
+    reduced.length ? sectionTitle(`Stock down (${reduced.length})`) + reduced.map(downCard).join("") : "",
+  ].join("");
 
   return {
-    subject: `${tag}: ${gbp(first.price)} ${first.name}${more}`,
+    subject: `${tag}: ${gbp(lead.product.price)} ${lead.product.name}${more}`,
     html: layout({
-      preheader: `${gbp(first.price)} ${first.name}${more}`,
-      heading: changes.length === 1 ? "RTX 3070 back in stock" : `${changes.length} RTX 3070s back in stock`,
-      sub:
-        `Cheapest first` + (newModels ? ` · ${plural(newModels, "new model")}` : "") + ` · ${new Date().toLocaleString("en-GB", { timeZone: "Europe/London", dateStyle: "medium", timeStyle: "short" })}`,
-      body: changes.map(changeCard).join(""),
+      preheader: `${summary.join(" · ")} — ${gbp(lead.product.price)} ${lead.product.name}`,
+      heading,
+      sub: `${summary.join(" · ")} · ${londonNow()}`,
+      body,
+    }),
+  };
+}
+
+export interface DailyInfo {
+  products: Product[];
+  stats: DailyStats;
+  lastCheckAt: string | null;
+  lastCheckOk: boolean | null;
+  lastCheckError: string | null;
+}
+
+/** Daily "still running" email: health, what happened since the last one, and the watchlist. */
+export function dailyEmail(d: DailyInfo): { subject: string; html: string } {
+  const s = d.stats;
+  const healthy = d.lastCheckOk === true;
+  const fmt = (iso: string) => new Date(iso).toLocaleString("en-GB", { timeZone: "Europe/London", dateStyle: "medium", timeStyle: "short" });
+  const stocked = d.products.filter(inStock).length;
+
+  const statusBox = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:14px 0 4px;background:${healthy ? C.accentBg : C.soldBg};border-radius:8px">
+      <tr><td style="padding:12px 14px;font-size:14px;line-height:21px;color:${healthy ? "#14532d" : C.soldText}">
+        <strong>${healthy ? "✓ All good" : "⚠ Last check failed"}</strong> — last check ${d.lastCheckAt ? fmt(d.lastCheckAt) : "never"}
+        ${!healthy && d.lastCheckError ? `<div style="font-size:13px;margin-top:4px">${esc(d.lastCheckError)}</div>` : ""}
+      </td></tr>
+    </table>`;
+
+  const row = (label: string, value: string) =>
+    `<tr><td style="padding:6px 0;border-top:1px solid ${C.border};font-size:14px;color:${C.muted}">${label}</td><td align="right" style="padding:6px 0;border-top:1px solid ${C.border};font-size:14px;font-weight:600">${value}</td></tr>`;
+
+  const activity = `
+    ${sectionTitle(`Since ${fmt(s.since)}`)}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+      ${row("Checks run", `${s.checks}${s.failures ? ` <span style="color:${C.soldText}">(${s.failures} failed)</span>` : ""}`)}
+      ${row("Back in stock", String(s.restocks))}
+      ${row("Sold out", String(s.soldOut))}
+      ${row("Stock down", String(s.reduced))}
+      ${row("Alert emails sent", String(s.emailsSent))}
+    </table>`;
+
+  return {
+    subject: healthy
+      ? `Still running: ${stocked} of ${d.products.length} RTX 3070s in stock`
+      : `⚠ CeX 3070 monitor: last check failed`,
+    html: layout({
+      preheader: healthy ? `All good. ${stocked} models in stock right now.` : `Last check failed: ${d.lastCheckError ?? "unknown error"}`,
+      heading: "Daily check-in",
+      sub: `${filtersLine()} · ${londonNow()}`,
+      body: `${statusBox}${activity}${d.products.length ? sectionTitle("Right now") + stats(d.products) + watchlistTable(d.products) : ""}`,
     }),
   };
 }
@@ -209,7 +326,7 @@ export function startupEmail(products: Product[]): { subject: string; html: stri
       heading: "Monitor started",
       sub: filtersLine(),
       body: `${stats(products)}
-        <p style="font-size:14px;color:${C.muted};margin:12px 0 4px">You'll get an email whenever any of these comes into stock online or in a store, or a new 3070 model appears. Here's everything being watched right now:</p>
+        <p style="font-size:14px;color:${C.muted};margin:12px 0 4px">You'll get an email whenever any of these comes into stock online or in a store, or a new 3070 model appears${config.watch.alertOnDecrease ? ", and when stock goes down or sells out" : ""}.${config.daily.hour !== null ? ` There's also a daily check-in at ${String(config.daily.hour).padStart(2, "0")}:00.` : ""} Here's everything being watched right now:</p>
         ${watchlistTable(products)}`,
     }),
   };

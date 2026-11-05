@@ -51,6 +51,17 @@ export const config = {
     storeFilter: list("STORE_FILTER").map((s) => s.toLowerCase()),
     /** Shown next to each price in emails as "£320 → £272". 0 hides it. */
     discountPercent: num("DISCOUNT_PERCENT") ?? 15,
+    /** Also email when stock goes down or a model sells out. */
+    alertOnDecrease: bool("ALERT_ON_DECREASE", true),
+  },
+
+  daily: {
+    /** London-time hour (0–23) to send the daily "still running" email; "off" disables. */
+    hour: (() => {
+      const raw = str("DAILY_EMAIL_HOUR", "9").toLowerCase();
+      const n = Number(raw);
+      return /^\d{1,2}$/.test(raw) && n >= 0 && n <= 23 ? n : null;
+    })(),
   },
 
   email: {

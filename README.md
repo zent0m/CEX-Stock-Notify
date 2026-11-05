@@ -14,7 +14,11 @@ CeX has one page per *model*, not per physical card, so "a new listing" means st
 
 Each check that finds changes sends **one email** with a card per affected model, cheapest first: product photo, price, badges (NEW MODEL / ONLINE / IN STORE), what changed, which stores, and a "View on CeX" button. The first check saves a baseline and sends a "monitor started" email with the **full watchlist**: every model, its price and current stock. The same list is live at `/watchlist`.
 
-A brand-new model with stock is alerted like a restock, with a NEW MODEL badge. A new model with no stock yet is recorded silently, and alerts normally once stock arrives. If sending fails, the previous state is kept, so the alert is retried on the next check.
+A brand-new model with stock is alerted like a restock, with a NEW MODEL badge. A new model with no stock yet is recorded silently, and alerts normally once stock arrives.
+
+**Stock going down** is reported too (turn off with `ALERT_ON_DECREASE=false`). A model goes in a **Sold out** section when it had stock and now has none anywhere. It goes in **Stock down** when online stock drops or a store loses it, but it's still available somewhere. These appear below any restocks in the same email, or alone if nothing was restocked.
+
+**Daily check-in.** Every day at 09:00 UK time (`DAILY_EMAIL_HOUR`), the app sends a "still running" email. It shows whether the last check worked (and the error if not), activity since the previous check-in (checks run, failures, restocks, sell-outs, stock drops, alert emails), and the full watchlist. If this email stops arriving, the app isn't running. If sending fails, the previous state is kept, so the alert is retried on the next check.
 
 > The old `wss2.cex.uk.webuy.io/v3/boxes` API (from Dionakra/webuy-api) is now blocked by Cloudflare, which is why this uses the search proxy instead. ntfy.sh was tried for push alerts but timed out from Render's shared IPs.
 
@@ -32,6 +36,7 @@ npm install
 npm run build
 npm run test:notify      # sample stock-alert email using live data
 npm run test:notify -- startup   # the "monitor started" email with the full watchlist
+npm run test:notify -- daily     # the daily check-in email
 npm run check            # one real check (first run = baseline)
 npm start                # server + checks every 5 minutes
 ```
@@ -73,6 +78,8 @@ See `.env.example`.
 | `INCLUDE_TI` | `true` | Include 3070 Ti cards |
 | `MAX_PRICE` | none | Only watch models at or under this price (£) |
 | `DISCOUNT_PERCENT` | `15` | Show each price as "£320 → £272" with this % off; `0` hides it |
+| `ALERT_ON_DECREASE` | `true` | Also email on stock drops and sell-outs |
+| `DAILY_EMAIL_HOUR` | `9` | UK-time hour for the daily check-in email; `off` disables |
 | `WATCH_ONLINE` | `true` | Alert on online stock increases |
 | `WATCH_STORES` | `true` | Alert when a store gets stock |
 | `STORE_FILTER` | all | Comma list of store-name substrings, e.g. `Birmingham,Nottingham` |
