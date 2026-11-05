@@ -1,6 +1,7 @@
 import * as http from "http";
 import { config } from "./config";
 import { check, describeConfig, lastResult, secondsSinceLastCheck } from "./monitor";
+import { sendPush } from "./notify";
 
 /** Ignore /check calls that arrive within this many seconds of the last check. */
 const MIN_SECONDS_BETWEEN_CHECKS = 60;
@@ -21,6 +22,23 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { skipped: "checked recently", last: lastResult });
     }
     return json(res, 200, await check());
+  }
+
+  if (url.pathname === "/test-notify") {
+    if (config.schedule.checkToken && url.searchParams.get("token") !== config.schedule.checkToken) {
+      return json(res, 401, { error: "bad token" });
+    }
+    try {
+      await sendPush({
+        title: "CeX 3070 monitor test",
+        message: `Test push from the server at ${new Date().toISOString()}`,
+        tags: ["white_check_mark"],
+        priority: 3,
+      });
+      return json(res, 200, { ok: true, server: config.ntfy.server, topicSet: !!config.ntfy.topic });
+    } catch (err) {
+      return json(res, 502, { ok: false, error: (err as Error).message });
+    }
   }
 
   if (url.pathname === "/" || url.pathname === "/status") {

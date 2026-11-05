@@ -56,6 +56,7 @@ https://<your-service>.onrender.com/check?token=<CHECK_TOKEN>
 |---|---|
 | `/status` | Health check and the last check's result |
 | `/check?token=…` | Run a check now (ignored if one ran in the last 60 s) |
+| `/test-notify?token=…` | Send a test push from the server and return any error |
 
 ## Settings
 

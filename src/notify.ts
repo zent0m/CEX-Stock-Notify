@@ -9,13 +9,12 @@ export interface Push {
   priority?: 1 | 2 | 3 | 4 | 5;
 }
 
-/** Publish via ntfy's JSON API (handles £ and other UTF-8 properly, unlike headers). */
-export async function sendPush(push: Push): Promise<void> {
-  if (!config.ntfy.topic) {
-    console.warn(`[ntfy disabled — NTFY_TOPIC not set] ${push.title}: ${push.message}`);
-    return;
-  }
+/** Pauses between attempts when ntfy can't be reached or is rate-limiting us. */
+const RETRY_DELAYS_MS = [5_000, 15_000];
 
+class RetryableError extends Error {}
+
+async function publishOnce(push: Push): Promise<void> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (config.ntfy.token) headers.Authorization = `Bearer ${config.ntfy.token}`;
 
@@ -25,16 +24,35 @@ export async function sendPush(push: Push): Promise<void> {
       method: "POST",
       headers,
       body: JSON.stringify({ topic: config.ntfy.topic, ...push }),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
     // Node's fetch hides the real reason (DNS, TLS, timeout…) in err.cause.
     const cause = (err as { cause?: { code?: string; message?: string } }).cause;
     const detail = cause ? ` (${cause.code ?? ""} ${cause.message ?? ""})`.replace("( ", "(") : "";
-    throw new Error(`ntfy request to ${config.ntfy.server} failed: ${(err as Error).message}${detail}`);
+    throw new RetryableError(`ntfy request to ${config.ntfy.server} failed: ${(err as Error).message}${detail}`);
   }
   if (!res.ok) {
-    throw new Error(`ntfy publish failed: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+    const msg = `ntfy publish failed: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`;
+    throw res.status === 429 || res.status >= 500 ? new RetryableError(msg) : new Error(msg);
+  }
+}
+
+/** Publish via ntfy's JSON API (handles £ and other UTF-8 properly, unlike headers). */
+export async function sendPush(push: Push): Promise<void> {
+  if (!config.ntfy.topic) {
+    console.warn(`[ntfy disabled — NTFY_TOPIC not set] ${push.title}: ${push.message}`);
+    return;
+  }
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await publishOnce(push);
+    } catch (err) {
+      if (!(err instanceof RetryableError) || attempt >= RETRY_DELAYS_MS.length) throw err;
+      console.warn(`${err.message} — retrying in ${RETRY_DELAYS_MS[attempt] / 1000}s`);
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+    }
   }
 }
 
