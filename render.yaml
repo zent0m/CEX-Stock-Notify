@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: cex-3070-notify
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /status
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NTFY_TOPIC
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      - key: CHECK_TOKEN
+        generateValue: true

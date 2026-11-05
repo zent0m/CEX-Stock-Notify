@@ -1,0 +1,21 @@
+{
+  "name": "cex-3070-notify",
+  "version": "1.0.0",
+  "description": "Watch CeX UK for RTX 3070 stock and push alerts via ntfy",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "check": "node dist/runOnce.js",
+    "test:notify": "node dist/testNotify.js"
+  },
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  }
+}
