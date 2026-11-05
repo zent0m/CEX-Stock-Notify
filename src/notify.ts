@@ -19,12 +19,20 @@ export async function sendPush(push: Push): Promise<void> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (config.ntfy.token) headers.Authorization = `Bearer ${config.ntfy.token}`;
 
-  const res = await fetch(config.ntfy.server, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ topic: config.ntfy.topic, ...push }),
-    signal: AbortSignal.timeout(10_000),
-  });
+  let res: Response;
+  try {
+    res = await fetch(config.ntfy.server, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ topic: config.ntfy.topic, ...push }),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (err) {
+    // Node's fetch hides the real reason (DNS, TLS, timeout…) in err.cause.
+    const cause = (err as { cause?: { code?: string; message?: string } }).cause;
+    const detail = cause ? ` (${cause.code ?? ""} ${cause.message ?? ""})`.replace("( ", "(") : "";
+    throw new Error(`ntfy request to ${config.ntfy.server} failed: ${(err as Error).message}${detail}`);
+  }
   if (!res.ok) {
     throw new Error(`ntfy publish failed: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
   }
