@@ -72,6 +72,7 @@ See `.env.example`.
 | `EMAIL_FROM` | `onboarding@resend.dev` | Sender; must be on a Resend-verified domain |
 | `INCLUDE_TI` | `true` | Include 3070 Ti cards |
 | `MAX_PRICE` | none | Only watch models at or under this price (£) |
+| `DISCOUNT_PERCENT` | `15` | Show each price as "£320 → £272" with this % off; `0` hides it |
 | `WATCH_ONLINE` | `true` | Alert on online stock increases |
 | `WATCH_STORES` | `true` | Alert when a store gets stock |
 | `STORE_FILTER` | all | Comma list of store-name substrings, e.g. `Birmingham,Nottingham` |

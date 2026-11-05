@@ -27,6 +27,17 @@ export function esc(s: string): string {
 }
 
 const gbp = (n: number) => `£${Number.isInteger(n) ? n : n.toFixed(2)}`;
+
+/** "£320 → £272" (DISCOUNT_PERCENT off, in green), or just "£320" if the discount is 0. */
+function priceWithDiscount(price: number, muted = false): string {
+  const pct = config.watch.discountPercent;
+  if (!pct) return gbp(price);
+  // Integer maths avoids float noise like 259.24999…
+  const discounted = Math.round(price * (100 - pct)) / 100;
+  const arrowColor = muted ? C.outText : C.muted;
+  const discColor = muted ? C.outText : C.accent;
+  return `${gbp(price)} <span style="color:${arrowColor};font-weight:400">→</span> <span style="color:${discColor}">${gbp(discounted)}</span>`;
+}
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const inStock = (p: Product) => p.onlineQty > 0 || p.stores.length > 0;
 
@@ -98,7 +109,7 @@ function changeCard(c: StockChange): string {
       <td valign="top" style="padding:16px 0 4px">
         ${badges ? `<div>${badges}</div>` : ""}
         <a href="${esc(url)}" style="color:${C.text};font-size:16px;font-weight:600;text-decoration:none;line-height:22px">${esc(p.name)}</a>
-        <div style="font-size:24px;font-weight:700;color:${C.text};margin:4px 0">${gbp(p.price)}</div>
+        <div style="font-size:24px;font-weight:700;color:${C.text};margin:4px 0">${priceWithDiscount(p.price)}</div>
         ${lines.map((l) => `<div style="font-size:14px;color:${C.muted};line-height:20px">${l}</div>`).join("")}
         ${button(url, "View on CeX")}
       </td>
@@ -126,14 +137,14 @@ export function watchlistTable(products: Product[]): string {
       const stock = [p.onlineQty > 0 ? `${p.onlineQty} online` : "", p.stores.length > 0 ? plural(p.stores.length, "store") : ""]
         .filter(Boolean)
         .join(" · ");
-      return `<tr><td width="54" style="padding:8px 10px 8px 0;${line}"><a href="${url}">${image(p, 44)}</a></td><td style="padding:8px 8px 8px 0;${line};font-size:14px;line-height:19px"><a href="${url}" style="color:${C.text};text-decoration:none">${esc(p.name)}</a><div style="font-size:12px;color:${C.accent};font-weight:600">${stock}</div></td><td align="right" style="padding:8px 0;${line};font-size:15px;font-weight:700;white-space:nowrap">${gbp(p.price)}</td></tr>`;
+      return `<tr><td width="54" style="padding:8px 10px 8px 0;${line}"><a href="${url}">${image(p, 44)}</a></td><td style="padding:8px 8px 8px 0;${line};font-size:14px;line-height:19px"><a href="${url}" style="color:${C.text};text-decoration:none">${esc(p.name)}</a><div style="font-size:12px;color:${C.accent};font-weight:600">${stock}</div></td><td align="right" style="padding:8px 0;${line};font-size:15px;font-weight:700;white-space:nowrap">${priceWithDiscount(p.price)}</td></tr>`;
     })
     .join("");
 
   const outRows = out
     .map(
       (p) =>
-        `<tr><td style="padding:5px 8px 5px 0;${line};font-size:13px"><a href="${esc(config.cex.productUrl(p.boxId))}" style="color:${C.outText};text-decoration:none">${esc(p.name)}</a></td><td align="right" style="padding:5px 0;${line};font-size:13px;color:${C.outText};white-space:nowrap">${gbp(p.price)}</td></tr>`,
+        `<tr><td style="padding:5px 8px 5px 0;${line};font-size:13px"><a href="${esc(config.cex.productUrl(p.boxId))}" style="color:${C.outText};text-decoration:none">${esc(p.name)}</a></td><td align="right" style="padding:5px 0;${line};font-size:13px;color:${C.outText};white-space:nowrap">${priceWithDiscount(p.price, true)}</td></tr>`,
     )
     .join("");
 

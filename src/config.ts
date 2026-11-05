@@ -49,6 +49,8 @@ export const config = {
     online: bool("WATCH_ONLINE", true),
     stores: bool("WATCH_STORES", true),
     storeFilter: list("STORE_FILTER").map((s) => s.toLowerCase()),
+    /** Shown next to each price in emails as "£320 → £272". 0 hides it. */
+    discountPercent: num("DISCOUNT_PERCENT") ?? 15,
   },
 
   email: {
